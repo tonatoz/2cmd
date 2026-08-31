@@ -1,0 +1,11 @@
+# Build output
+.build/
+dist/
+
+# Session planning notes, superseded by README
+PLAN.md
+
+# Local tooling, not part of the project
+.pi/
+
+.DS_Store
