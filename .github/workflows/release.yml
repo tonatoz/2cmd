@@ -10,6 +10,9 @@ permissions:
 jobs:
   release:
     runs-on: macos-15
+    env:
+      # Matches the certificate created by Tools/make-release-cert.sh.
+      SIGN_IDENTITY: 2cmd Release Signing
 
     steps:
       - uses: actions/checkout@v4
