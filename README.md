@@ -38,6 +38,15 @@ xattr -dr com.apple.quarantine /Applications/2cmd.app
 
 Then grant Accessibility, as described below.
 
+Releases are signed with a dedicated certificate that stays the same across versions,
+so the Accessibility permission survives updates. You can check that a download really
+came from this project's release pipeline:
+
+```sh
+codesign -d -r- /Applications/2cmd.app | grep designated
+# designated => identifier "dev.anton.2cmd" and certificate leaf = H"33dbe410cf5122fca09f92e2bb49b888e797c508"
+```
+
 ## Build and install
 
 ```sh

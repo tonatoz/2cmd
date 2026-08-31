@@ -15,7 +15,7 @@ jobs:
       SIGN_IDENTITY: 2cmd Release Signing
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Signing with a stable certificate keeps the app's code identity constant
       # across releases, so users grant Accessibility once instead of after every
