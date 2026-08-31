@@ -29,7 +29,7 @@ unchanged, nothing is modified or swallowed.
 Install with Homebrew:
 
 ```sh
-brew install --cask tonatoz/tap/2cmd
+brew install --cask --no-quarantine tonatoz/tap/2cmd
 ```
 
 Homebrew installs the app into `/Applications` and follows new GitHub releases.
@@ -37,15 +37,22 @@ Alternatively, download `2cmd.dmg` or `2cmd.zip` from the
 [latest release](https://github.com/tonatoz/2cmd/releases/latest) and move the app
 into `/Applications`.
 
-macOS will report that the developer cannot be verified, because the app is signed
-with a local certificate and not notarized. Open it once via
-**System Settings → Privacy & Security → Open Anyway**, or clear the quarantine flag:
+`--no-quarantine` is not cosmetic. The app is signed with this project's own
+certificate and is not notarized, and Homebrew attaches the quarantine flag to
+everything it downloads. Gatekeeper spawns a quarantined build and then holds it
+before its `main()` runs, so the failure looks like a broken app rather than a
+security prompt: the process is listed in Activity Monitor, no menu bar icon ever
+appears, and the only hint is a "2cmd was not opened" alert that is easy to miss.
+
+If it is already installed and quarantined, clear the flag and reopen:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/2cmd.app
+open /Applications/2cmd.app
 ```
 
-Then grant Accessibility, as described below.
+Approving the app once in **System Settings → Privacy & Security → Open Anyway**
+works too. Then grant Accessibility, as described below.
 
 Releases are signed with a dedicated certificate that stays the same across versions,
 so the Accessibility permission survives updates. You can check that a download really
@@ -179,6 +186,45 @@ the build still works, but prints a warning and the permission dies on every reb
 Since macOS 10.15 a *listen-only* keyboard tap is gated by the separate **Input
 Monitoring** service, while `.defaultTap` is covered by Accessibility. The app uses
 `.defaultTap` and returns every event unchanged, so it needs one permission, not two.
+
+## Troubleshooting
+
+### The process is running, but there is no menu bar icon
+
+Gatekeeper is holding the app before it starts. A quarantined, non-notarized build is
+spawned by launchd and then stopped inside dyld, so `ps` and Activity Monitor list a
+live process that never created its status item. Confirm it:
+
+```sh
+xattr -p com.apple.quarantine /Applications/2cmd.app     # flag still there?
+sample $(pgrep -x 2cmd) 1 | grep -c TwoCmd_main          # 0 = never reached main()
+log show --last 5m --predicate 'process == "amfid"' | grep 2cmd
+# ... not valid: Error Code=-423 "The file is adhoc signed or signed by an unknown
+#     certificate chain"
+```
+
+Fix: clear the quarantine flag (see [Install](#install)) and reopen the app. A healthy
+process shows `TwoCmd_main → -[NSApplication run]` in `sample`.
+
+### The layout changes when I switch apps with ⌘⇥
+
+That is macOS, not 2cmd: **System Settings → Keyboard → "Automatically switch to a
+document's input source"** remembers an input source per app and restores it on
+activation. Check and disable:
+
+```sh
+defaults read com.apple.HIToolbox AppleGlobalTextInputProperties
+# { TextInputGlobalPropertyPerContextInput = 1; }   ← 1 means the feature is on
+```
+
+2cmd cannot fire on ⌘⇥: the ⇥ `keyDown` reaches the tap and voids the pending gesture
+before ⌘ is released. To see what the app itself does, watch its log:
+
+```sh
+log stream --level info --predicate 'subsystem == "dev.anton.2cmd"'
+```
+
+A real solo tap logs `solo tap: left`/`right` followed by `select <input source id>`.
 
 ## Menu
 

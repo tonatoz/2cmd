@@ -28,8 +28,16 @@ cask "2cmd" do
   zap trash: "~/Library/Preferences/dev.anton.2cmd.plist"
 
   caveats <<~EOS
-    2cmd is not notarized. On first launch, allow it in
-    System Settings → Privacy & Security, then grant Accessibility access.
+    2cmd is signed with a project certificate and is not notarized, and
+    Homebrew quarantines everything it downloads. Gatekeeper spawns a quarantined
+    build and then holds it before it runs: the process is listed in Activity
+    Monitor, but no menu bar icon ever appears. Clear the flag once:
+
+      xattr -dr com.apple.quarantine "#{appdir}/2cmd.app"
+      open "#{appdir}/2cmd.app"
+
+    Installing with "brew install --cask --no-quarantine tonatoz/tap/2cmd" skips
+    the flag. Then enable 2cmd in System Settings → Privacy & Security → Accessibility.
   EOS
 end
 EOF
