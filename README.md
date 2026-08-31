@@ -1,19 +1,42 @@
+<img src="docs/icon.png" width="112" align="right" alt="2cmd icon">
+
 # 2cmd
+
+[![CI](https://github.com/tonatoz/2cmd/actions/workflows/ci.yml/badge.svg)](https://github.com/tonatoz/2cmd/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/tonatoz/2cmd?sort=semver)](https://github.com/tonatoz/2cmd/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A tiny macOS menu bar utility: tap the **left ⌘** to switch to one keyboard layout,
 tap the **right ⌘** to switch to another. Both layouts are configurable, and the
 interception can be turned off from the menu.
 
 Tapping means pressing and releasing ⌘ with nothing in between. ⌘C, ⌘Tab, ⌘-click,
-⌥⌘ and friends keep working exactly as before — the app never modifies or swallows
-any event (the event tap is listen-only).
+⌥⌘ and friends keep working exactly as before: every event is passed through
+unchanged, nothing is modified or swallowed.
+
+<img src="docs/menu.png" width="300" alt="The 2cmd menu">
 
 ## Requirements
 
-- macOS 15 or newer
-- Swift toolchain (Command Line Tools are enough — full Xcode is not required)
+- macOS 15 or newer, Apple silicon or Intel
 - Both layouts you want to use must already be enabled in
   System Settings → Keyboard → Input Sources
+- Building from source needs the Swift toolchain from the Command Line Tools;
+  full Xcode is not required
+
+## Install
+
+Download `2cmd.dmg` or `2cmd.zip` from the
+[latest release](https://github.com/tonatoz/2cmd/releases/latest), move the app into
+`/Applications` and launch it. macOS will report that the developer cannot be verified,
+because the app is signed with a local certificate and not notarized — open it once via
+**System Settings → Privacy & Security → Open Anyway**, or clear the quarantine flag:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/2cmd.app
+```
+
+Then grant Accessibility, as described below.
 
 ## Build and install
 
@@ -141,25 +164,55 @@ Monitoring** service, while `.defaultTap` is covered by Accessibility. The app u
 
 ## Menu
 
-- **Включено** — enable/disable interception
-- **Левый ⌘ / Правый ⌘** — pick the layout for each key
-- **Запускать при входе** — launch at login (`SMAppService`)
-- **Выйти** — quit
+- **Enabled** — turn interception on or off
+- **Left ⌘ / Right ⌘** — pick the layout for each key
+- **Launch at Login** — register as a login item (`SMAppService`)
+- **Check for Updates…** — compares the running version against the latest release
+- **Quit**
 
 Defaults on first launch: left ⌘ → your English layout, right ⌘ → your Russian
 layout, chosen from the input sources already enabled in the system.
+
+## Privacy
+
+The app needs the Accessibility permission to install a `CGEventTap`, which is the
+same mechanism a keylogger would use. What it actually does with it:
+
+- **Keystrokes are never stored, logged or transmitted.** The tap callback looks at one
+  modifier key code and the modifier flags, then returns the event unchanged. Nothing
+  is buffered.
+- **Only modifier changes matter.** `keyDown` and `keyUp` are observed solely to cancel
+  a pending gesture; their key codes are never read.
+- **No network access at all**, except when you explicitly choose
+  *Check for Updates…*, which requests one public GitHub API URL and sends no data
+  about you.
+- **No analytics, no telemetry, no crash reporting.** Settings live in `UserDefaults`
+  and hold two input source identifiers and one boolean.
+- Diagnostics go to the unified log and contain no keystrokes:
+
+  ```sh
+  log show --last 5m --predicate 'subsystem == "dev.anton.2cmd"' --info
+  ```
+
+The whole event path is `Sources/TwoCmd/KeyTapMonitor.swift` plus
+`Sources/TwoCmdCore/SoloTapDetector.swift` — about 200 lines, worth reading if you are
+about to grant Accessibility to a stranger's binary.
 
 ## How it works
 
 | File | Role |
 | --- | --- |
-| `Sources/TwoCmdCore/SoloTapDetector.swift` | Gesture state machine, no AppKit, unit-checked |
-| `Sources/TwoCmd/KeyTapMonitor.swift` | Listen-only `CGEventTap` on `flagsChanged` + mouse monitors |
+| `Sources/TwoCmdCore/SoloTapDetector.swift` | Gesture state machine, no AppKit, covered by checks |
+| `Sources/TwoCmdCore/ActivationCoordinator.swift` | Permission/tap startup, retries until the tap is up |
+| `Sources/TwoCmdCore/Version.swift` | Numeric version comparison for the update check |
+| `Sources/TwoCmd/KeyTapMonitor.swift` | `CGEventTap` on `flagsChanged` plus mouse monitors |
 | `Sources/TwoCmd/InputSourceManager.swift` | Text Input Source Services wrapper |
 | `Sources/TwoCmd/StatusItemController.swift` | Menu bar item and menu |
+| `Sources/TwoCmd/UpdateChecker.swift` | Latest release lookup via the GitHub API |
 | `Sources/TwoCmd/Settings.swift` | `UserDefaults` persistence |
 | `Sources/TwoCmd/AppDelegate.swift` | Permission flow and wiring |
 | `Tools/MakeIcon.swift` | Draws the app icon (see below) |
+| `Tools/make-signing-cert.sh` | Creates the local signing identity |
 
 ### Icon
 

@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # macOS 15 matches LSMinimumSystemVersion in Support/Info.plist.
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain versions
+        run: |
+          swift --version
+          swift format --version
+
+      - name: Lint
+        run: make lint
+
+      - name: Checks
+        run: make test
+
+      # No signing certificate here, so this falls back to ad-hoc signing and
+      # prints a warning. That is expected: CI only proves the bundle builds.
+      - name: Build app bundle
+        run: make app
+
+      - name: Verify bundle
+        run: |
+          codesign --verify --strict dist/2cmd.app
+          plutil -lint dist/2cmd.app/Contents/Info.plist
+          test -f dist/2cmd.app/Contents/Resources/AppIcon.icns

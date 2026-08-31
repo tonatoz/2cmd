@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Signing with a stable certificate keeps the app's code identity constant
+      # across releases, so users grant Accessibility once instead of after every
+      # update. Without the secret the build still succeeds, ad-hoc signed.
+      - name: Import signing certificate
+        env:
+          CERT_P12: ${{ secrets.SIGNING_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          if [ -z "$CERT_P12" ]; then
+            echo "No SIGNING_CERT_P12 secret set — falling back to ad-hoc signing."
+            echo "Users will have to re-grant Accessibility after updating."
+            exit 0
+          fi
+
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 20)"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          printf '%s' "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+          # Lets codesign use the key without an interactive prompt.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+
+          # find-identity searches the user's keychain list, so add ours to it.
+          security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
+          security find-identity -p codesigning
+
+      - name: Checks
+        run: make test
+
+      - name: Build universal bundle and packages
+        run: |
+          make universal
+          make zip
+          make dmg
+
+      - name: Verify artifacts
+        run: |
+          lipo -archs dist/2cmd.app/Contents/MacOS/2cmd
+          codesign --verify --strict dist/2cmd.app
+          codesign -d -r- dist/2cmd.app 2>&1 | grep designated
+          test -f dist/2cmd.zip
+          test -f dist/2cmd.dmg
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/2cmd.zip \
+            dist/2cmd.dmg
