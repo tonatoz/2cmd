@@ -58,7 +58,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         report(activation.state)
         guard !finished else { return }
 
-        activationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
+        activationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) {
+            [weak self] timer in
             guard let self, var activation = self.activation else { return }
             let previous = activation.state
             let finished = activation.advance()

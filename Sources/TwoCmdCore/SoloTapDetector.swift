@@ -23,16 +23,16 @@ public struct SoloTapDetector {
     /// of one specific physical key can be told apart (e.g. left ⌘ while right ⌘
     /// is still held).
     static let modifierFlags: [CGKeyCode: UInt64] = [
-        54: 0x0000_0010, // right ⌘
-        55: 0x0000_0008, // left ⌘
-        56: 0x0000_0002, // left ⇧
-        57: 0x0001_0000, // caps lock (NX_ALPHASHIFTMASK)
-        58: 0x0000_0020, // left ⌥
-        59: 0x0000_0001, // left ⌃
-        60: 0x0000_0004, // right ⇧
-        61: 0x0000_0040, // right ⌥
-        62: 0x0000_2000, // right ⌃
-        63: 0x0080_0000, // fn (NX_SECONDARYFNMASK)
+        54: 0x0000_0010,  // right ⌘
+        55: 0x0000_0008,  // left ⌘
+        56: 0x0000_0002,  // left ⇧
+        57: 0x0001_0000,  // caps lock (NX_ALPHASHIFTMASK)
+        58: 0x0000_0020,  // left ⌥
+        59: 0x0000_0001,  // left ⌃
+        60: 0x0000_0004,  // right ⇧
+        61: 0x0000_0040,  // right ⌥
+        62: 0x0000_2000,  // right ⌃
+        63: 0x0080_0000,  // fn (NX_SECONDARYFNMASK)
     ]
 
     /// Caps lock is a latched state rather than a held key: its bit can stay set
@@ -40,7 +40,8 @@ public struct SoloTapDetector {
     private static let capsLockKeyCode: CGKeyCode = 57
 
     /// Every bit belonging to a modifier the user can physically hold down.
-    private static let heldModifierMask: UInt64 = modifierFlags
+    private static let heldModifierMask: UInt64 =
+        modifierFlags
         .filter { $0.key != capsLockKeyCode }
         .values
         .reduce(0) { $0 | $1 }

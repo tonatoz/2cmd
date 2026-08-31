@@ -22,18 +22,20 @@ struct Palette {
 enum IconRenderer {
     static func render(size: CGFloat) -> NSBitmapImageRep {
         let pixels = Int(size)
-        guard let rep = NSBitmapImageRep(
-            bitmapDataPlanes: nil,
-            pixelsWide: pixels,
-            pixelsHigh: pixels,
-            bitsPerSample: 8,
-            samplesPerPixel: 4,
-            hasAlpha: true,
-            isPlanar: false,
-            colorSpaceName: .deviceRGB,
-            bytesPerRow: 0,
-            bitsPerPixel: 0
-        ) else {
+        guard
+            let rep = NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: pixels,
+                pixelsHigh: pixels,
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            )
+        else {
             fatalError("cannot allocate bitmap")
         }
 
@@ -85,10 +87,12 @@ enum IconRenderer {
 
     /// The ⌘ glyph, drawn as text so no image asset is needed at build time.
     private static func drawCommand(in rect: CGRect, scale: CGFloat) {
-        draw("⌘", attributes: [
-            .font: NSFont.systemFont(ofSize: rect.height * scale, weight: .medium),
-            .foregroundColor: NSColor.white,
-        ], centeredIn: rect)
+        draw(
+            "⌘",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: rect.height * scale, weight: .medium),
+                .foregroundColor: NSColor.white,
+            ], centeredIn: rect)
     }
 
     private static func draw(
@@ -106,7 +110,7 @@ enum IconRenderer {
 
 func value(for flag: String) -> String? {
     guard let index = CommandLine.arguments.firstIndex(of: flag),
-          CommandLine.arguments.index(after: index) < CommandLine.arguments.endIndex
+        CommandLine.arguments.index(after: index) < CommandLine.arguments.endIndex
     else { return nil }
     return CommandLine.arguments[CommandLine.arguments.index(after: index)]
 }

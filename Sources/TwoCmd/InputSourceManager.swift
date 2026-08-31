@@ -31,7 +31,9 @@ enum InputSourceManager {
     }
 
     static func currentSourceID() -> String? {
-        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue() else { return nil }
+        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue() else {
+            return nil
+        }
         return stringProperty(source, kTISPropertyInputSourceID)
     }
 
@@ -42,7 +44,9 @@ enum InputSourceManager {
         if let enabled = availableSources().first(where: { $0.primaryLanguage == language }) {
             return enabled.id
         }
-        guard let suggested = TISCopyInputSourceForLanguage(language as CFString)?.takeRetainedValue() else {
+        guard
+            let suggested = TISCopyInputSourceForLanguage(language as CFString)?.takeRetainedValue()
+        else {
             return nil
         }
         return stringProperty(suggested, kTISPropertyInputSourceID)
@@ -56,7 +60,10 @@ enum InputSourceManager {
 
     private static func sources(matching filter: [String: Any]?) -> [TISInputSource] {
         let cfFilter = filter.map { $0 as CFDictionary }
-        guard let list = TISCreateInputSourceList(cfFilter, false)?.takeRetainedValue() as? [TISInputSource] else {
+        guard
+            let list = TISCreateInputSourceList(cfFilter, false)?.takeRetainedValue()
+                as? [TISInputSource]
+        else {
             return []
         }
         return list
@@ -64,22 +71,23 @@ enum InputSourceManager {
 
     private static func makeInputSource(_ source: TISInputSource) -> InputSource? {
         guard isSelectableKeyboardSource(source),
-              let id = stringProperty(source, kTISPropertyInputSourceID),
-              let name = stringProperty(source, kTISPropertyLocalizedName)
+            let id = stringProperty(source, kTISPropertyInputSourceID),
+            let name = stringProperty(source, kTISPropertyLocalizedName)
         else { return nil }
         return InputSource(id: id, name: name, languages: languages(source))
     }
 
     private static func isSelectableKeyboardSource(_ source: TISInputSource) -> Bool {
         guard let category = stringProperty(source, kTISPropertyInputSourceCategory),
-              category == (kTISCategoryKeyboardInputSource as String)
+            category == (kTISCategoryKeyboardInputSource as String)
         else { return false }
         return boolProperty(source, kTISPropertyInputSourceIsSelectCapable)
             && boolProperty(source, kTISPropertyInputSourceIsEnabled)
     }
 
     private static func languages(_ source: TISInputSource) -> [String] {
-        guard let pointer = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages) else {
+        guard let pointer = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages)
+        else {
             return []
         }
         return Unmanaged<CFArray>.fromOpaque(pointer).takeUnretainedValue() as? [String] ?? []

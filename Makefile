@@ -16,7 +16,7 @@ SIGN_IDENTITY ?= 2cmd Local Signing
 ICONSET := .build/AppIcon.iconset
 ICON := $(DIST)/AppIcon.icns
 
-.PHONY: all build app run install uninstall test reset-permission icon signing-cert universal zip release clean
+.PHONY: all build app run install uninstall test lint fmt reset-permission icon signing-cert universal zip dmg release clean
 
 all: app
 
@@ -49,6 +49,25 @@ zip:
 # One command to hand the app to another Mac: universal bundle, then archive.
 release: universal
 	@$(MAKE) zip
+
+# swift-format ships with the Swift toolchain, so linting needs nothing installed.
+lint:
+	swift format lint --strict --recursive Sources Tests Tools
+
+fmt:
+	swift format --in-place --recursive Sources Tests Tools
+
+# Disk image for people who expect to drag the app into Applications.
+# hdiutil is part of macOS; no third-party packaging tool involved.
+dmg:
+	@test -d "$(APP)" || { echo "No $(APP) yet — run 'make app' or 'make universal' first."; exit 1; }
+	rm -rf .build/dmg "$(DIST)/$(APP_NAME).dmg"
+	mkdir -p .build/dmg
+	cp -R "$(APP)" .build/dmg/
+	ln -s /Applications .build/dmg/Applications
+	hdiutil create -quiet -volname "$(APP_NAME)" -srcfolder .build/dmg \
+		-ov -format UDZO "$(DIST)/$(APP_NAME).dmg"
+	@echo "Disk image: $(DIST)/$(APP_NAME).dmg"
 
 # XCTest/swift-testing do not ship with the Command Line Tools, so the state
 # machine is checked by a plain executable compiled straight from source.

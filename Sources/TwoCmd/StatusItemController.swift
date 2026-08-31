@@ -51,54 +51,65 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        menu.addItem(checkboxItem(
-            title: "Включено",
-            isOn: settings.isEnabled,
-            action: #selector(toggleEnabled)
-        ))
+        menu.addItem(
+            checkboxItem(
+                title: "Enabled",
+                isOn: settings.isEnabled,
+                action: #selector(toggleEnabled)
+            ))
 
         switch activationState {
         case .running:
             break
         case .waitingForPermission:
             menu.addItem(.separator())
-            menu.addItem(disabledItem(title: "Нет доступа к «Универсальному доступу»"))
+            menu.addItem(disabledItem(title: "No Accessibility permission"))
             // An ad-hoc signature pins the TCC grant to this exact build's cdhash, so
             // after a rebuild the old row stays switched on while access is denied.
             // Flipping that switch only rewrites the allow bit, not the stored code
             // requirement — the row has to be removed so macOS records the new build.
-            menu.addItem(disabledItem(title: "Галочка стоит, но доступа нет? Удалите 2cmd из списка"))
-            menu.addItem(disabledItem(title: "кнопкой «−» и добавьте заново — снять/поставить не помогает"))
-            menu.addItem(actionItem(
-                title: "Открыть настройки доступа…",
-                action: #selector(openAccessibilitySettings)
-            ))
-            menu.addItem(actionItem(title: "Перезапустить 2cmd", action: #selector(relaunch)))
+            menu.addItem(
+                disabledItem(title: "Already enabled in Settings? Remove 2cmd from the list"))
+            menu.addItem(
+                disabledItem(
+                    title: "with “−” and add it again — toggling it off and on will not help"))
+            menu.addItem(
+                actionItem(
+                    title: "Open Accessibility Settings…",
+                    action: #selector(openAccessibilitySettings)
+                ))
+            menu.addItem(actionItem(title: "Relaunch 2cmd", action: #selector(relaunch)))
         case .tapCreationFailed:
             menu.addItem(.separator())
-            menu.addItem(disabledItem(title: "Доступ есть, но перехват не запустился"))
-            menu.addItem(disabledItem(title: "Пробую снова каждую секунду"))
-            menu.addItem(actionItem(title: "Перезапустить 2cmd", action: #selector(relaunch)))
+            menu.addItem(disabledItem(title: "Permission granted, but the tap did not start"))
+            menu.addItem(disabledItem(title: "Retrying every second"))
+            menu.addItem(actionItem(title: "Relaunch 2cmd", action: #selector(relaunch)))
         }
 
         menu.addItem(.separator())
         let sources = InputSourceManager.availableSources()
-        menu.addItem(layoutItem(title: "Левый ⌘", side: .left, sources: sources))
-        menu.addItem(layoutItem(title: "Правый ⌘", side: .right, sources: sources))
+        menu.addItem(layoutItem(title: "Left ⌘", side: .left, sources: sources))
+        menu.addItem(layoutItem(title: "Right ⌘", side: .right, sources: sources))
 
         menu.addItem(.separator())
-        menu.addItem(checkboxItem(
-            title: "Запускать при входе",
-            isOn: SMAppService.mainApp.status == .enabled,
-            action: #selector(toggleLaunchAtLogin)
-        ))
+        menu.addItem(
+            checkboxItem(
+                title: "Launch at Login",
+                isOn: SMAppService.mainApp.status == .enabled,
+                action: #selector(toggleLaunchAtLogin)
+            ))
 
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Выйти", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(actionItem(title: "Check for Updates…", action: #selector(checkForUpdates)))
+
+        menu.addItem(.separator())
+        let quit = NSMenuItem(
+            title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quit)
     }
 
-    private func layoutItem(title: String, side: CommandSide, sources: [InputSource]) -> NSMenuItem {
+    private func layoutItem(title: String, side: CommandSide, sources: [InputSource]) -> NSMenuItem
+    {
         let selectedID = settings.sourceID(for: side)
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         if let selectedID, let name = InputSourceManager.name(forID: selectedID, in: sources) {
@@ -107,10 +118,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         let submenu = NSMenu()
         if sources.isEmpty {
-            submenu.addItem(disabledItem(title: "Нет доступных раскладок"))
+            submenu.addItem(disabledItem(title: "No input sources available"))
         }
         for source in sources {
-            let subitem = NSMenuItem(title: source.name, action: #selector(selectSource(_:)), keyEquivalent: "")
+            let subitem = NSMenuItem(
+                title: source.name, action: #selector(selectSource(_:)), keyEquivalent: "")
             subitem.target = self
             subitem.representedObject = SourceSelection(side: side, id: source.id)
             subitem.state = source.id == selectedID ? .on : .off
@@ -152,7 +164,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func openAccessibilitySettings() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+        let url = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
         NSWorkspace.shared.open(url)
     }
 
@@ -161,9 +174,43 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func relaunch() {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, _ in
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration)
+        { _, _ in
             DispatchQueue.main.async { NSApp.terminate(nil) }
         }
+    }
+
+    @objc private func checkForUpdates() {
+        UpdateChecker.check { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let release?):
+                let alert = NSAlert()
+                alert.messageText = "Version \(release.tag) is available"
+                alert.informativeText =
+                    "You are running \(UpdateChecker.currentVersion.map(Self.describe) ?? "an unknown version")."
+                alert.addButton(withTitle: "Open Release Page")
+                alert.addButton(withTitle: "Later")
+                if alert.runModal() == .alertFirstButtonReturn {
+                    NSWorkspace.shared.open(release.pageURL)
+                }
+            case .success(nil):
+                self.presentAlert(
+                    title: "2cmd is up to date",
+                    message: "No newer release was found.",
+                    style: .informational
+                )
+            case .failure(let error):
+                self.presentAlert(
+                    title: "Could not check for updates",
+                    message: error.localizedDescription
+                )
+            }
+        }
+    }
+
+    private static func describe(_ version: Version) -> String {
+        version.components.map(String.init).joined(separator: ".")
     }
 
     @objc private func toggleLaunchAtLogin() {
@@ -176,17 +223,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
         } catch {
             presentAlert(
-                title: "Не удалось изменить автозапуск",
-                message: "\(error.localizedDescription)\n\nАвтозапуск работает только для приложения из /Applications."
+                title: "Could not change the login item",
+                message:
+                    "\(error.localizedDescription)\n\nLaunch at login only works for an app in /Applications."
             )
         }
     }
 
-    private func presentAlert(title: String, message: String) {
+    private func presentAlert(title: String, message: String, style: NSAlert.Style = .warning) {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
-        alert.alertStyle = .warning
+        alert.alertStyle = style
         alert.runModal()
     }
 }

@@ -37,25 +37,28 @@ final class KeyTapMonitor {
     func start() -> Bool {
         guard !isRunning else { return true }
 
-        let mask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
+        let mask: CGEventMask =
+            (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
             | (1 << CGEventType.flagsChanged.rawValue)
 
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: mask,
-            callback: { _, type, event, refcon in
-                if let refcon {
-                    Unmanaged<KeyTapMonitor>.fromOpaque(refcon)
-                        .takeUnretainedValue()
-                        .handle(type: type, event: event)
-                }
-                return Unmanaged.passUnretained(event)
-            },
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else {
+        guard
+            let tap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: mask,
+                callback: { _, type, event, refcon in
+                    if let refcon {
+                        Unmanaged<KeyTapMonitor>.fromOpaque(refcon)
+                            .takeUnretainedValue()
+                            .handle(type: type, event: event)
+                    }
+                    return Unmanaged.passUnretained(event)
+                },
+                userInfo: Unmanaged.passUnretained(self).toOpaque()
+            )
+        else {
             return false
         }
 
@@ -82,7 +85,8 @@ final class KeyTapMonitor {
             }
         case .flagsChanged:
             let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-            guard let side = detector.modifierChanged(keyCode: keyCode, flags: event.flags.rawValue) else {
+            guard let side = detector.modifierChanged(keyCode: keyCode, flags: event.flags.rawValue)
+            else {
                 return
             }
             Log.tap.info("solo tap: \(String(describing: side), privacy: .public)")
@@ -107,16 +111,22 @@ final class KeyTapMonitor {
             .scrollWheel,
         ]
 
-        if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] _ in
-            self?.detector.cancel()
-        }) {
+        if let global = NSEvent.addGlobalMonitorForEvents(
+            matching: mask,
+            handler: { [weak self] _ in
+                self?.detector.cancel()
+            })
+        {
             mouseMonitors.append(global)
         }
 
-        if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in
-            self?.detector.cancel()
-            return event
-        }) {
+        if let local = NSEvent.addLocalMonitorForEvents(
+            matching: mask,
+            handler: { [weak self] event in
+                self?.detector.cancel()
+                return event
+            })
+        {
             mouseMonitors.append(local)
         }
     }
