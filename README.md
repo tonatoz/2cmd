@@ -26,10 +26,19 @@ unchanged, nothing is modified or swallowed.
 
 ## Install
 
-Download `2cmd.dmg` or `2cmd.zip` from the
-[latest release](https://github.com/tonatoz/2cmd/releases/latest), move the app into
-`/Applications` and launch it. macOS will report that the developer cannot be verified,
-because the app is signed with a local certificate and not notarized — open it once via
+Install with Homebrew:
+
+```sh
+brew install --cask tonatoz/tap/2cmd
+```
+
+Homebrew installs the app into `/Applications` and follows new GitHub releases.
+Alternatively, download `2cmd.dmg` or `2cmd.zip` from the
+[latest release](https://github.com/tonatoz/2cmd/releases/latest) and move the app
+into `/Applications`.
+
+macOS will report that the developer cannot be verified, because the app is signed
+with a local certificate and not notarized. Open it once via
 **System Settings → Privacy & Security → Open Anyway**, or clear the quarantine flag:
 
 ```sh

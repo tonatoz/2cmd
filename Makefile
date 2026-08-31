@@ -75,6 +75,7 @@ test:
 	@mkdir -p .build
 	swiftc -swift-version 5 Sources/TwoCmdCore/*.swift Tests/SoloTapDetectorTests.swift -o .build/solotap-tests
 	@.build/solotap-tests
+	@Tests/HomebrewCaskTests.sh
 
 # One-time: create a stable local signing identity so the Accessibility grant
 # is not invalidated by every rebuild. See the comment on SIGN_IDENTITY above.
