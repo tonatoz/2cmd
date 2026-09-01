@@ -23,21 +23,27 @@ cask "2cmd" do
 
   app "2cmd.app"
 
+  # Homebrew quarantines every download, unconditionally: the --no-quarantine flag
+  # and its HOMEBREW_CASK_OPTS equivalent were removed in July 2026. A quarantined
+  # build signed with an unknown certificate chain is spawned and then held by
+  # Gatekeeper before main() runs, so the app appears in Activity Monitor with no
+  # menu bar icon and no window. Dropping the flag here is what makes the app
+  # launchable at all until the release is notarized.
+  postflight do
+    system_command "/usr/bin/xattr",
+                   args: ["-dr", "com.apple.quarantine", "#{appdir}/2cmd.app"]
+  end
+
   uninstall quit: "dev.anton.2cmd"
 
   zap trash: "~/Library/Preferences/dev.anton.2cmd.plist"
 
   caveats <<~EOS
-    2cmd is signed with a project certificate and is not notarized, and
-    Homebrew quarantines everything it downloads. Gatekeeper spawns a quarantined
-    build and then holds it before it runs: the process is listed in Activity
-    Monitor, but no menu bar icon ever appears. Clear the flag once:
+    2cmd is signed with a project certificate and is not notarized, so this cask
+    clears the quarantine flag Homebrew attaches to the download — otherwise
+    Gatekeeper holds the app before it starts and it never reaches the menu bar.
 
-      xattr -dr com.apple.quarantine "#{appdir}/2cmd.app"
-      open "#{appdir}/2cmd.app"
-
-    Installing with "brew install --cask --no-quarantine tonatoz/tap/2cmd" skips
-    the flag. Then enable 2cmd in System Settings → Privacy & Security → Accessibility.
+    Then enable 2cmd in System Settings → Privacy & Security → Accessibility.
   EOS
 end
 EOF

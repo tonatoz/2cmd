@@ -29,7 +29,8 @@ unchanged, nothing is modified or swallowed.
 Install with Homebrew:
 
 ```sh
-brew install --cask --no-quarantine tonatoz/tap/2cmd
+brew trust --cask tonatoz/tap/2cmd     # Homebrew 6 ignores untrusted third-party taps
+brew install --cask tonatoz/tap/2cmd
 ```
 
 Homebrew installs the app into `/Applications` and follows new GitHub releases.
@@ -37,14 +38,16 @@ Alternatively, download `2cmd.dmg` or `2cmd.zip` from the
 [latest release](https://github.com/tonatoz/2cmd/releases/latest) and move the app
 into `/Applications`.
 
-`--no-quarantine` is not cosmetic. The app is signed with this project's own
-certificate and is not notarized, and Homebrew attaches the quarantine flag to
-everything it downloads. Gatekeeper spawns a quarantined build and then holds it
-before its `main()` runs, so the failure looks like a broken app rather than a
-security prompt: the process is listed in Activity Monitor, no menu bar icon ever
-appears, and the only hint is a "2cmd was not opened" alert that is easy to miss.
+The app is signed with this project's own certificate and is not notarized, and
+Homebrew quarantines every download — unconditionally, since `--no-quarantine` and
+its `HOMEBREW_CASK_OPTS` equivalent were removed from Homebrew in July 2026. A
+quarantined build of this kind is spawned by launchd and then held by Gatekeeper
+before its `main()` runs, so the failure does not look like a security prompt at all:
+the process is listed in Activity Monitor, no menu bar icon ever appears, and the
+only hint is a "2cmd was not opened" alert that is easy to miss. The cask therefore
+drops the quarantine flag in a `postflight` step; nothing else is needed.
 
-If it is already installed and quarantined, clear the flag and reopen:
+For a `.dmg` or `.zip` download the flag has to be cleared by hand:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/2cmd.app
