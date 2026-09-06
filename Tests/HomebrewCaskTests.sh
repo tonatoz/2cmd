@@ -1,59 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-version="1.2.3"
-sha256="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+Tools/make-homebrew-cask.sh 1.2.3 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$tmp/2cmd.rb"
 
-expected=$(cat <<'EOF'
-cask "2cmd" do
-  version "1.2.3"
-  sha256 "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+HOMEBREW_NO_AUTO_UPDATE=1 brew ruby - "$tmp/2cmd.rb" "$tmp" <<'RUBY'
+require "cask/cask_loader"
+require "cask/config"
+require "fileutils"
 
-  url "https://github.com/tonatoz/2cmd/releases/download/v#{version}/2cmd.dmg"
-  name "2cmd"
-  desc "Switch keyboard layouts with the left and right Command keys"
-  homepage "https://github.com/tonatoz/2cmd"
+cask = Cask::CaskLoader::FromContentLoader.new(File.read(ARGV.fetch(0))).load(config: nil)
+raise "incorrect version" unless cask.version.to_s == "1.2.3"
+raise "incorrect checksum" unless cask.sha256.to_s == "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+raise "incorrect download URL" unless cask.url.to_s == "https://github.com/tonatoz/2cmd/releases/download/v1.2.3/2cmd.dmg"
 
-  livecheck do
-    url :url
-    strategy :github_latest
-  end
+appdir = File.join(ARGV.fetch(1), "Applications with spaces")
+cask.config = Cask::Config.new(explicit: { appdir: appdir })
+app = File.join(appdir, "2cmd.app")
+FileUtils.mkdir_p(app)
+file = File.join(app, "executable")
+File.write(file, "fixture")
+system("/usr/bin/xattr", "-w", "com.apple.quarantine", "0081;00000000;Homebrew;", file, exception: true)
 
-  depends_on macos: :sequoia
-
-  app "2cmd.app"
-
-  # Homebrew quarantines every download, unconditionally: the --no-quarantine flag
-  # and its HOMEBREW_CASK_OPTS equivalent were removed in July 2026. A quarantined
-  # build signed with an unknown certificate chain is spawned and then held by
-  # Gatekeeper before main() runs, so the app appears in Activity Monitor with no
-  # menu bar icon and no window. Dropping the flag here is what makes the app
-  # launchable at all until the release is notarized.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{appdir}/2cmd.app"]
-  end
-
-  uninstall quit: "dev.anton.2cmd"
-
-  zap trash: "~/Library/Preferences/dev.anton.2cmd.plist"
-
-  caveats <<~EOS
-    2cmd is signed with a project certificate and is not notarized, so this cask
-    clears the quarantine flag Homebrew attaches to the download — otherwise
-    Gatekeeper holds the app before it starts and it never reaches the menu bar.
-
-    Then enable 2cmd in System Settings → Privacy & Security → Accessibility.
-  EOS
-end
-EOF
-)
-
-actual=$(Tools/make-homebrew-cask.sh "$version" "$sha256")
-
-if [[ "$actual" != "$expected" ]]; then
-  diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual")
-  exit 1
-fi
-
-printf 'Homebrew cask generation\n  ok   — deterministic version, checksum, install, and cleanup metadata\n'
+hook = cask.artifacts.find { |artifact| artifact.is_a?(Cask::Artifact::PostflightSteps) }
+raise "missing postflight_steps" unless hook
+Homebrew::InstallSteps::Runner.new(context: cask).run(hook.steps)
+attributes = IO.popen(["/usr/bin/xattr", file], &:read)
+raise "quarantine was not removed" if attributes.lines.map(&:strip).include?("com.apple.quarantine")
+raise "app contents changed" unless File.read(file) == "fixture"
+puts "Homebrew cask generation: metadata and recursive quarantine removal passed"
+RUBY

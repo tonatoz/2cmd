@@ -34,9 +34,9 @@ cask "2cmd" do
   # Gatekeeper before main() runs, so the app appears in Activity Monitor with no
   # menu bar icon and no window. Dropping the flag here is what makes the app
   # launchable at all until the release is notarized.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{appdir}/2cmd.app"]
+  postflight_steps do
+    run "/usr/bin/xattr",
+        args: ["-dr", "com.apple.quarantine", "{{appdir}}/2cmd.app"]
   end
 
   uninstall quit: "dev.anton.2cmd"

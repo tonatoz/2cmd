@@ -45,7 +45,7 @@ quarantined build of this kind is spawned by launchd and then held by Gatekeeper
 before its `main()` runs, so the failure does not look like a security prompt at all:
 the process is listed in Activity Monitor, no menu bar icon ever appears, and the
 only hint is a "2cmd was not opened" alert that is easy to miss. The cask therefore
-drops the quarantine flag in a `postflight` step; nothing else is needed.
+drops the quarantine flag in a `postflight_steps` block; nothing else is needed.
 
 For a `.dmg` or `.zip` download the flag has to be cleared by hand:
 
