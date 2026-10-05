@@ -47,6 +47,9 @@ Verify AppKit interactions and actual input-source switching in the running app.
 Pushing a `v*` tag starts the Release workflow. It builds that tag and publishes
 `2cmd.zip` and `2cmd.dmg`. If the release already exists, the workflow uploads
 the packages without replacing existing files.
+The workflow writes the tag version without its leading `v` into
+`CFBundleShortVersionString` and `CFBundleVersion` before building and signing.
+It verifies both fields before uploading the packages.
 
 If publication fails, run the current workflow against the original tag:
 

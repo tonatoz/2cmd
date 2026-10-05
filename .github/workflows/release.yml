@@ -65,12 +65,18 @@ jobs:
 
       - name: Build universal bundle and packages
         run: |
+          version="${RELEASE_TAG#v}"
+          plutil -replace CFBundleShortVersionString -string "$version" Support/Info.plist
+          plutil -replace CFBundleVersion -string "$version" Support/Info.plist
           make universal
           make zip
           make dmg
 
       - name: Verify artifacts
         run: |
+          version="${RELEASE_TAG#v}"
+          test "$(plutil -extract CFBundleShortVersionString raw dist/2cmd.app/Contents/Info.plist)" = "$version"
+          test "$(plutil -extract CFBundleVersion raw dist/2cmd.app/Contents/Info.plist)" = "$version"
           lipo -archs dist/2cmd.app/Contents/MacOS/2cmd
           codesign --verify --strict dist/2cmd.app
           codesign -d -r- dist/2cmd.app 2>&1 | grep designated
