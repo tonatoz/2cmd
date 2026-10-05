@@ -42,6 +42,26 @@ Test observable input-source choices and event propagation in
 `Settings` in `Tests/SettingsTests.swift`, using an isolated `UserDefaults` domain.
 Verify AppKit interactions and actual input-source switching in the running app.
 
+## Publishing releases
+
+Pushing a `v*` tag starts the Release workflow. It builds that tag and publishes
+`2cmd.zip` and `2cmd.dmg`. If the release already exists, the workflow uploads
+the packages without replacing existing files.
+
+If publication fails, run the current workflow against the original tag:
+
+```sh
+gh workflow run release.yml --ref main -f tag=v2.0.0
+```
+
+Replace `v2.0.0` with the target tag. Do not move the tag or delete the release.
+Wait for both packages to appear before synchronizing the Homebrew tap.
+The tap schedules synchronization hourly. To start it immediately:
+
+```sh
+gh workflow run sync-2cmd.yml --repo tonatoz/homebrew-tap
+```
+
 ## Reporting bugs
 
 Please include:

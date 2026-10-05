@@ -3,6 +3,12 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build (for example v2.0.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -13,9 +19,12 @@ jobs:
     env:
       # Matches the certificate created by Tools/make-release-cert.sh.
       SIGN_IDENTITY: 2cmd Release Signing
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       # Signing with a stable certificate keeps the app's code identity constant
       # across releases, so users grant Accessibility once instead of after every
@@ -72,8 +81,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes \
-            dist/2cmd.zip \
-            dist/2cmd.dmg
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" \
+              dist/2cmd.zip \
+              dist/2cmd.dmg
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TAG" \
+              --generate-notes \
+              dist/2cmd.zip \
+              dist/2cmd.dmg
+          fi
