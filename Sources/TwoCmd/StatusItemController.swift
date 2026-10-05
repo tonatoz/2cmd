@@ -1,22 +1,28 @@
 import AppKit
+import ApplicationServices
 import ServiceManagement
 import TwoCmdCore
 
 /// Menu bar icon plus its dropdown menu.
 final class StatusItemController: NSObject, NSMenuDelegate {
-    /// Ties a submenu item to the ⌘ side it configures.
+    /// Ties a source-selection item to its ordered binding row.
     private final class SourceSelection: NSObject {
-        let side: CommandSide
+        let index: Int
         let id: String
 
-        init(side: CommandSide, id: String) {
-            self.side = side
+        init(index: Int, id: String) {
+            self.index = index
             self.id = id
         }
     }
 
     /// Called when the user flips the "enabled" checkbox.
     var onEnabledChanged: ((Bool) -> Void)?
+    var onRecordingChanged: ((Bool) -> Void)?
+
+    var canRecordKeys = false {
+        didSet { configurationController?.recordingAvailable = canRecordKeys }
+    }
 
     /// Kept in sync by the app delegate.
     var activationState: ActivationState = .waitingForPermission {
@@ -25,6 +31,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private let settings: Settings
     private let statusItem: NSStatusItem
+    private var configurationController: BindingConfigurationController?
 
     init(settings: Settings) {
         self.settings = settings
@@ -88,8 +95,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
         let sources = InputSourceManager.availableSources()
-        menu.addItem(layoutItem(title: "Left ⌘", side: .left, sources: sources))
-        menu.addItem(layoutItem(title: "Right ⌘", side: .right, sources: sources))
+        for (index, binding) in settings.bindings.enumerated() {
+            menu.addItem(layoutItem(binding: binding, index: index, sources: sources))
+        }
+        if let error = settings.loadError {
+            menu.addItem(disabledItem(title: error))
+        }
+        menu.addItem(
+            actionItem(title: "Configure Keys…", action: #selector(configureKeys))
+        )
 
         menu.addItem(.separator())
         menu.addItem(
@@ -108,15 +122,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(quit)
     }
 
-    private func layoutItem(title: String, side: CommandSide, sources: [InputSource]) -> NSMenuItem
-    {
-        let selectedID = settings.sourceID(for: side)
+    private func layoutItem(binding: KeyBinding, index: Int, sources: [InputSource]) -> NSMenuItem {
+        let selectedID = binding.sourceID
+        let title = binding.keyCode.map(KeyboardKey.name(for:)) ?? "Choose a key"
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        if let selectedID, let name = InputSourceManager.name(forID: selectedID, in: sources) {
+        if let selectedID {
+            let name =
+                InputSourceManager.name(forID: selectedID, in: sources)
+                ?? "Input source unavailable"
             item.title = "\(title): \(name)"
         }
 
         let submenu = NSMenu()
+        submenu.autoenablesItems = false
         if sources.isEmpty {
             submenu.addItem(disabledItem(title: "No input sources available"))
         }
@@ -124,12 +142,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let subitem = NSMenuItem(
                 title: source.name, action: #selector(selectSource(_:)), keyEquivalent: "")
             subitem.target = self
-            subitem.representedObject = SourceSelection(side: side, id: source.id)
+            subitem.representedObject = SourceSelection(index: index, id: source.id)
             subitem.state = source.id == selectedID ? .on : .off
+            subitem.isEnabled = configurationController?.isOpen != true && settings.loadError == nil
             submenu.addItem(subitem)
         }
         item.submenu = submenu
         return item
+    }
+
+    func receiveRecordedKey(_ keyCode: CGKeyCode) {
+        configurationController?.receiveRecordedKey(keyCode)
     }
 
     private func checkboxItem(title: String, isOn: Bool, action: Selector) -> NSMenuItem {
@@ -159,8 +182,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func selectSource(_ sender: NSMenuItem) {
-        guard let selection = sender.representedObject as? SourceSelection else { return }
-        settings.setSourceID(selection.id, for: selection.side)
+        guard configurationController?.isOpen != true, settings.loadError == nil,
+            let selection = sender.representedObject as? SourceSelection
+        else { return }
+        settings.setSourceID(selection.id, at: selection.index)
+    }
+
+    @objc private func configureKeys() {
+        if configurationController == nil {
+            let controller = BindingConfigurationController(settings: settings)
+            controller.onRecordingChanged = { [weak self] recording in
+                self?.onRecordingChanged?(recording)
+            }
+            configurationController = controller
+        }
+        canRecordKeys = activationState == .running && AXIsProcessTrusted()
+        configurationController?.show()
     }
 
     @objc private func openAccessibilitySettings() {

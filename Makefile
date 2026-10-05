@@ -69,12 +69,22 @@ dmg:
 		-ov -format UDZO "$(DIST)/$(APP_NAME).dmg"
 	@echo "Disk image: $(DIST)/$(APP_NAME).dmg"
 
-# XCTest/swift-testing do not ship with the Command Line Tools, so the state
-# machine is checked by a plain executable compiled straight from source.
+# XCTest/swift-testing do not ship with the Command Line Tools.
+# Pure behavior uses standalone executables compiled directly from source.
 test:
 	@mkdir -p .build
-	swiftc -swift-version 5 Sources/TwoCmdCore/*.swift Tests/SoloTapDetectorTests.swift -o .build/solotap-tests
-	@.build/solotap-tests
+	swiftc -swift-version 5 Sources/TwoCmdCore/*.swift Tests/KeyBindingDetectorTests.swift -o .build/key-binding-tests
+	@.build/key-binding-tests
+	@mkdir -p .build/settings-test-support
+	swiftc -swift-version 5 -emit-library -emit-module -module-name TwoCmdCore \
+		Sources/TwoCmdCore/*.swift \
+		-emit-module-path .build/settings-test-support/TwoCmdCore.swiftmodule \
+		-o .build/settings-test-support/libTwoCmdCore.dylib
+	swiftc -swift-version 5 -I .build/settings-test-support -L .build/settings-test-support \
+		-lTwoCmdCore -Xlinker -rpath -Xlinker '@executable_path/settings-test-support' \
+		Sources/TwoCmd/Settings.swift Sources/TwoCmd/InputSourceManager.swift \
+		Tests/SettingsTests.swift -o .build/settings-tests
+	@.build/settings-tests
 	@Tests/HomebrewCaskTests.sh
 
 # One-time: create a stable local signing identity so the Accessibility grant

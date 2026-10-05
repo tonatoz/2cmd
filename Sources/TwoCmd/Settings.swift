@@ -1,19 +1,56 @@
 import Foundation
 import TwoCmdCore
 
-/// Persisted preferences (UserDefaults).
+/// Owns the ordered binding configuration and its UserDefaults persistence.
 final class Settings {
     private enum Key {
         static let enabled = "enabled"
+        static let bindings = "bindings"
         static let leftSourceID = "leftSourceID"
         static let rightSourceID = "rightSourceID"
     }
 
     private let defaults: UserDefaults
+    private(set) var bindings: [KeyBinding]
+    private(set) var loadError: String?
+    var onBindingsChanged: (() -> Void)?
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        defaultSourceID: (String) -> String? = InputSourceManager.defaultSourceID(forLanguage:)
+    ) {
         self.defaults = defaults
         defaults.register(defaults: [Key.enabled: true])
+        if defaults.object(forKey: Key.bindings) != nil {
+            if let data = defaults.data(forKey: Key.bindings),
+                let stored = try? JSONDecoder().decode([KeyBinding].self, from: data),
+                BindingConfiguration.validationError(
+                    in: stored, allowUnconfiguredRequiredRows: true) == nil
+            {
+                bindings = stored
+                defaults.removeObject(forKey: Key.leftSourceID)
+                defaults.removeObject(forKey: Key.rightSourceID)
+                return
+            }
+            bindings = BindingConfiguration.standard(
+                leftSourceID: defaultSourceID("en"), rightSourceID: defaultSourceID("ru"))
+            loadError =
+                "Saved bindings could not be loaded. They have not been overwritten. "
+                + "Review these replacement rows and choose Apply to save them."
+            return
+        }
+        let legacyLeft = defaults.string(forKey: Key.leftSourceID).flatMap { $0.isEmpty ? nil : $0 }
+        let legacyRight = defaults.string(forKey: Key.rightSourceID).flatMap {
+            $0.isEmpty ? nil : $0
+        }
+        bindings = BindingConfiguration.standard(
+            leftSourceID: legacyLeft ?? defaultSourceID("en"),
+            rightSourceID: legacyRight ?? defaultSourceID("ru"))
+        do {
+            try save(bindings)
+        } catch {
+            loadError = "Could not save the initial bindings: \(error.localizedDescription)"
+        }
     }
 
     var isEnabled: Bool {
@@ -21,31 +58,31 @@ final class Settings {
         set { defaults.set(newValue, forKey: Key.enabled) }
     }
 
-    func sourceID(for side: CommandSide) -> String? {
-        let value = defaults.string(forKey: key(for: side))
-        return (value?.isEmpty ?? true) ? nil : value
+    func apply(_ bindings: [KeyBinding]) throws {
+        if let error = BindingConfiguration.validationError(in: bindings) { throw error }
+        try save(bindings)
+        self.bindings = bindings
+        loadError = nil
+        onBindingsChanged?()
     }
 
-    func setSourceID(_ id: String, for side: CommandSide) {
-        defaults.set(id, forKey: key(for: side))
-    }
-
-    /// First launch: left ⌘ → English layout, right ⌘ → Russian layout,
-    /// picked from the layouts the user already has enabled.
-    func seedDefaultsIfNeeded() {
-        let languages: [CommandSide: String] = [.left: "en", .right: "ru"]
-        for side in CommandSide.allCases {
-            guard sourceID(for: side) == nil, let language = languages[side] else { continue }
-            if let id = InputSourceManager.defaultSourceID(forLanguage: language) {
-                setSourceID(id, for: side)
-            }
+    func setSourceID(_ id: String, at index: Int) {
+        guard loadError == nil, bindings.indices.contains(index), !id.isEmpty else { return }
+        var updated = bindings
+        updated[index].sourceID = id
+        do {
+            try save(updated)
+            bindings = updated
+            onBindingsChanged?()
+        } catch {
+            loadError = "Could not save the selected input source: \(error.localizedDescription)"
         }
     }
 
-    private func key(for side: CommandSide) -> String {
-        switch side {
-        case .left: return Key.leftSourceID
-        case .right: return Key.rightSourceID
-        }
+    private func save(_ bindings: [KeyBinding]) throws {
+        defaults.set(try JSONEncoder().encode(bindings), forKey: Key.bindings)
+        defaults.removeObject(forKey: Key.leftSourceID)
+        defaults.removeObject(forKey: Key.rightSourceID)
     }
+
 }

@@ -2,8 +2,7 @@ import AppKit
 import CoreGraphics
 import TwoCmdCore
 
-/// Watches the keyboard for a solo ⌘ tap via a `CGEventTap`. Every event is returned
-/// unchanged — nothing is modified or swallowed.
+/// Adapts physical keyboard events to configured input-source bindings.
 ///
 /// Uses `.defaultTap` rather than `.listenOnly` on purpose: since macOS 10.15 a
 /// listen-only keyboard tap is gated by the separate Input Monitoring service
@@ -13,20 +12,29 @@ import TwoCmdCore
 /// Main thread only: the tap's run loop source is attached to the main run loop, so
 /// the C callback fires on the main thread.
 final class KeyTapMonitor {
-    /// Called on the main thread when a solo ⌘ tap completes.
-    var onSoloTap: ((CommandSide) -> Void)?
+    var onSelectSource: ((String) -> Void)?
+    var onRecordedKey: ((CGKeyCode) -> Void)?
+
+    var bindings: [KeyBinding] = [] {
+        didSet { configureDetector() }
+    }
 
     var isEnabled = false {
+        didSet { configureDetector() }
+    }
+
+    var isRecording = false {
         didSet {
-            guard isEnabled != oldValue else { return }
-            detector.cancel()
-            if let tap { CGEvent.tapEnable(tap: tap, enable: isEnabled) }
+            guard isRecording != oldValue else { return }
+            generation &+= 1
+            detector.setRecording(isRecording)
         }
     }
 
     private(set) var isRunning = false
 
-    private var detector = SoloTapDetector()
+    private var detector = KeyBindingDetector(enabled: false)
+    private var generation: UInt64 = 0
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var mouseMonitors: [Any] = []
@@ -49,10 +57,12 @@ final class KeyTapMonitor {
                 options: .defaultTap,
                 eventsOfInterest: mask,
                 callback: { _, type, event, refcon in
-                    if let refcon {
+                    if let refcon,
                         Unmanaged<KeyTapMonitor>.fromOpaque(refcon)
                             .takeUnretainedValue()
                             .handle(type: type, event: event)
+                    {
+                        return nil
                     }
                     return Unmanaged.passUnretained(event)
                 },
@@ -64,7 +74,8 @@ final class KeyTapMonitor {
 
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: isEnabled)
+        // Keep observing when disabled to pair releases of already-suppressed keys.
+        CGEvent.tapEnable(tap: tap, enable: true)
 
         self.tap = tap
         runLoopSource = source
@@ -75,29 +86,45 @@ final class KeyTapMonitor {
 
     // MARK: - Event handling
 
-    private func handle(type: CGEventType, event: CGEvent) {
-        switch type {
-        case .tapDisabledByTimeout, .tapDisabledByUserInput:
-            // The system can disable a tap on its own; bring it back up.
-            detector.cancel()
-            if let tap, isEnabled {
-                CGEvent.tapEnable(tap: tap, enable: true)
-            }
-        case .flagsChanged:
-            let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-            guard let side = detector.modifierChanged(keyCode: keyCode, flags: event.flags.rawValue)
-            else {
-                return
-            }
-            Log.tap.info("solo tap: \(String(describing: side), privacy: .public)")
-            // Hop out of the tap callback before touching Text Input Sources.
-            DispatchQueue.main.async { [weak self] in
-                self?.onSoloTap?(side)
-            }
-        default:
-            // A real key was pressed while ⌘ was held: not a solo tap any more.
-            detector.cancel()
+    private func configureDetector() {
+        generation &+= 1
+        detector.configure(bindings: bindings, enabled: isEnabled)
+    }
+
+    /// Returns whether this event belongs to an intercepted press.
+    private func handle(type: CGEventType, event: CGEvent) -> Bool {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            detector.recoverFromInterruption(
+                physicalFnIsHeld: CGEventSource.keyState(.hidSystemState, key: 63))
+            if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            return false
         }
+
+        let decision = detector.handle(
+            type: type,
+            keyCode: CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode)),
+            flags: event.flags.rawValue,
+            isRepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+        )
+        let currentGeneration = generation
+        if let sourceID = decision.sourceID {
+            // Text Input Sources must not run inside the event-tap callback.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.generation == currentGeneration,
+                    self.isEnabled, !self.isRecording
+                else { return }
+                self.onSelectSource?(sourceID)
+            }
+        }
+        if let keyCode = decision.recordedKeyCode {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.generation == currentGeneration, self.isRecording else {
+                    return
+                }
+                self.onRecordedKey?(keyCode)
+            }
+        }
+        return decision.suppress
     }
 
     /// Mouse and scroll events cancel a pending tap (so ⌘-click behaves normally).

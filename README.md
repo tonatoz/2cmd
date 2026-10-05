@@ -6,20 +6,21 @@
 [![Latest release](https://img.shields.io/github/v/release/tonatoz/2cmd?sort=semver)](https://github.com/tonatoz/2cmd/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A tiny macOS menu bar utility: tap the **left ⌘** to switch to one keyboard layout,
-tap the **right ⌘** to switch to another. Both layouts are configurable, and the
-interception can be turned off from the menu.
+A small macOS menu bar utility. By default, tap the **left ⌘** to select one keyboard
+layout and the **right ⌘** to select another. Pick either layout directly in the menu.
+Users who need only these two keys do not need additional setup.
 
-Tapping means pressing and releasing ⌘ with nothing in between. ⌘C, ⌘Tab, ⌘-click,
-⌥⌘ and friends keep working exactly as before: every event is passed through
-unchanged, nothing is modified or swallowed.
+**Configure Keys…** lets you replace the default keys and create up to five bindings.
+A solo modifier tap means pressing and releasing it without other keyboard or mouse
+activity. Shortcuts such as ⌘C, ⌘Tab, and ⌘-click keep their normal behavior.
+An assigned ordinary key switches on key down and suppresses its normal action.
 
 <img src="docs/menu.png" width="300" alt="The 2cmd menu">
 
 ## Requirements
 
 - macOS 15 or newer, Apple silicon or Intel
-- Both layouts you want to use must already be enabled in
+- The input sources you want to use must already be enabled in
   System Settings → Keyboard → Input Sources
 - Building from source needs the Swift toolchain from the Command Line Tools;
   full Xcode is not required
@@ -188,7 +189,8 @@ the build still works, but prints a warning and the permission dies on every reb
 
 Since macOS 10.15 a *listen-only* keyboard tap is gated by the separate **Input
 Monitoring** service, while `.defaultTap` is covered by Accessibility. The app uses
-`.defaultTap` and returns every event unchanged, so it needs one permission, not two.
+`.defaultTap`, which needs Accessibility. It suppresses only assigned ordinary presses
+and presses captured by key recording. Other events pass through unchanged.
 
 ## Troubleshooting
 
@@ -227,12 +229,13 @@ before ⌘ is released. To see what the app itself does, watch its log:
 log stream --level info --predicate 'subsystem == "dev.anton.2cmd"'
 ```
 
-A real solo tap logs `solo tap: left`/`right` followed by `select <input source id>`.
+A completed binding logs `select <input source id> -> true` when selection succeeds.
 
 ## Menu
 
 - **Enabled** — turn interception on or off
-- **Left ⌘ / Right ⌘** — pick the layout for each key
+- **Configured keys** — pick the input source for each key; initially Left ⌘ and Right ⌘
+- **Configure Keys…** — edit physical keys and add optional bindings
 - **Launch at Login** — register as a login item (`SMAppService`)
 - **Check for Updates…** — compares the running version against the latest release
 - **Quit**
@@ -240,41 +243,90 @@ A real solo tap logs `solo tap: left`/`right` followed by `select <input source 
 Defaults on first launch: left ⌘ → your English layout, right ⌘ → your Russian
 layout, chosen from the input sources already enabled in the system.
 
+### Configure keys
+
+The configuration window starts with two required rows. Change their keys or input
+sources, or add up to three optional rows. Only optional rows can be deleted.
+
+1. Choose **Configure Keys…** from the menu.
+2. Choose an input source for each row.
+3. Choose **Record Key**, then press the physical key you want to assign.
+4. Choose **Apply** to activate and save the complete configuration.
+
+**Cancel** or closing the window discards unapplied edits. Existing bindings remain
+active while you edit. Recording temporarily suspends switching and consumes the
+captured press. Use **Cancel Recording** to cancel without reserving Escape.
+
+Supported assignments include:
+
+- Left and right Command, Option, and Control
+- Character keys
+- Ordinary function keys
+- Navigation keys
+- Editing keys
+
+Fn/Globe, Caps Lock, Shift, and multimedia keys cannot be assigned. Standard
+function-key events must reach macOS as function keys, rather than their multimedia actions.
+
+A physical key code identifies each binding, independently of the active input source.
+Letter labels describe their US keyboard positions. A key cannot appear in two rows,
+but different keys can select the same input source.
+
+An assigned ordinary key loses its normal action while its input source is available.
+The window shows this warning before you apply. Holding the key does not switch again.
+Shortcuts pass through when the modifier precedes the assigned key. Pressing an
+assigned letter before Command does not reconstruct an already-suppressed shortcut.
+
+**Restore Standard Keys** restores left and right Command in the draft, retains the
+first two rows' input sources, and removes optional rows. Choose **Apply** to confirm
+that draft, or **Cancel** to retain the previous configuration.
+
+If an input source becomes unavailable, the app retains its binding and marks it.
+The key temporarily performs its normal action. The binding resumes when that input
+source becomes available again.
+
+Settings survive app restarts and updates. Existing left/right selections migrate
+automatically. Menu source selection saves immediately; it is unavailable while the
+configuration window is open, so it cannot overwrite a draft.
+
+
 ## Privacy
 
 The app needs the Accessibility permission to install a `CGEventTap`, which is the
 same mechanism a keylogger would use. What it actually does with it:
 
-- **Keystrokes are never stored, logged or transmitted.** The tap callback looks at one
-  modifier key code and the modifier flags, then returns the event unchanged. Nothing
-  is buffered.
-- **Only modifier changes matter.** `keyDown` and `keyUp` are observed solely to cancel
-  a pending gesture; their key codes are never read.
+- **Typed text is never stored, logged, or transmitted.** The event path reads physical
+  key codes, modifier flags, and repeat status. It retains only transient press state
+  to recognize gestures and pair intercepted releases.
+- **Only configured presses switch input sources.** Ordinary assigned keys are
+  suppressed when used without a held modifier. Unassigned keys pass through.
 - **No network access at all**, except when you explicitly choose
   *Check for Updates…*, which requests one public GitHub API URL and sends no data
   about you.
-- **No analytics, no telemetry, no crash reporting.** Settings live in `UserDefaults`
-  and hold two input source identifiers and one boolean.
+- **No analytics, telemetry, or crash reporting.** Settings live in `UserDefaults`
+  and contain up to five key-code/source-ID pairs plus the Enabled preference.
 - Diagnostics go to the unified log and contain no keystrokes:
 
   ```sh
   log show --last 5m --predicate 'subsystem == "dev.anton.2cmd"' --info
   ```
 
-The whole event path is `Sources/TwoCmd/KeyTapMonitor.swift` plus
-`Sources/TwoCmdCore/SoloTapDetector.swift` — about 200 lines, worth reading if you are
-about to grant Accessibility to a stranger's binary.
+The event path is `Sources/TwoCmd/KeyTapMonitor.swift` plus
+`Sources/TwoCmdCore/KeyBindingDetector.swift`. Read it before granting Accessibility
+to a binary you do not trust.
 
 ## How it works
 
 | File | Role |
 | --- | --- |
-| `Sources/TwoCmdCore/SoloTapDetector.swift` | Gesture state machine, no AppKit, covered by checks |
+| `Sources/TwoCmdCore/KeyBinding.swift` | Physical keys, binding model, and configuration validation |
+| `Sources/TwoCmdCore/KeyBindingDetector.swift` | Gesture recognition and ordinary-key event decisions, no AppKit |
 | `Sources/TwoCmdCore/ActivationCoordinator.swift` | Permission/tap startup, retries until the tap is up |
 | `Sources/TwoCmdCore/Version.swift` | Numeric version comparison for the update check |
-| `Sources/TwoCmd/KeyTapMonitor.swift` | `CGEventTap` on `flagsChanged` plus mouse monitors |
+| `Sources/TwoCmd/KeyTapMonitor.swift` | Keyboard event tap, press suppression, and mouse monitors |
 | `Sources/TwoCmd/InputSourceManager.swift` | Text Input Source Services wrapper |
 | `Sources/TwoCmd/StatusItemController.swift` | Menu bar item and menu |
+| `Sources/TwoCmd/BindingConfigurationController.swift` | Native configuration window and draft editing |
 | `Sources/TwoCmd/UpdateChecker.swift` | Latest release lookup via the GitHub API |
 | `Sources/TwoCmd/Settings.swift` | `UserDefaults` persistence |
 | `Sources/TwoCmd/AppDelegate.swift` | Permission flow and wiring |

@@ -1,16 +1,24 @@
 import AppKit
 import ApplicationServices
+import Carbon
 import TwoCmdCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let settings = Settings()
+    private let settings: Settings
     private let monitor = KeyTapMonitor()
     private var statusItem: StatusItemController?
     private var activationTimer: Timer?
     private var activation: ActivationCoordinator?
 
+    init(settings: Settings = Settings()) {
+        self.settings = settings
+        super.init()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        settings.seedDefaultsIfNeeded()
+        settings.onBindingsChanged = { [weak self] in
+            self?.refreshBindings()
+        }
 
         let statusItem = StatusItemController(settings: settings)
         statusItem.onEnabledChanged = { [weak self] isEnabled in
@@ -18,27 +26,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.statusItem = statusItem
 
-        monitor.onSoloTap = { [weak self] side in
-            self?.selectLayout(for: side)
+        monitor.onSelectSource = { [weak self] id in
+            guard let self else { return }
+            let selected = InputSourceManager.select(id: id)
+            Log.tap.info("select \(id, privacy: .public) -> \(selected, privacy: .public)")
+            if !selected { self.refreshBindings() }
+        }
+        monitor.onRecordedKey = { [weak statusItem] keyCode in
+            statusItem?.receiveRecordedKey(keyCode)
+        }
+        statusItem.onRecordingChanged = { [weak self] recording in
+            self?.monitor.isRecording = recording
         }
         monitor.isEnabled = settings.isEnabled
+        refreshBindings()
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(inputSourcesChanged(_:)),
+            name: Notification.Name(kTISNotifyEnabledKeyboardInputSourcesChanged as String),
+            object: nil
+        )
 
         startActivation()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         activationTimer?.invalidate()
+        DistributedNotificationCenter.default().removeObserver(self)
     }
 
     // MARK: - Private
 
-    private func selectLayout(for side: CommandSide) {
-        guard let id = settings.sourceID(for: side) else {
-            Log.tap.error("no layout configured for \(String(describing: side), privacy: .public)")
-            return
+    private func refreshBindings() {
+        let availableIDs = Set(InputSourceManager.availableSources().map(\.id))
+        monitor.bindings = settings.bindings.filter { binding in
+            guard let id = binding.sourceID else { return false }
+            return availableIDs.contains(id)
         }
-        let selected = InputSourceManager.select(id: id)
-        Log.tap.info("select \(id, privacy: .public) -> \(selected, privacy: .public)")
+    }
+
+    @objc private func inputSourcesChanged(_ notification: Notification) {
+        refreshBindings()
     }
 
     /// A `CGEventTap` needs the Accessibility permission, which can only be observed
@@ -77,6 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func report(_ state: ActivationState) {
         Log.tap.info("activation state: \(String(describing: state), privacy: .public)")
         statusItem?.activationState = state
+        statusItem?.canRecordKeys = state == .running && AXIsProcessTrusted()
     }
 
     private func isProcessTrustedWithPrompt() -> Bool {
