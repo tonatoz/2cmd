@@ -1,9 +1,8 @@
 # Contributing
 
-2cmd is a small, deliberately narrow utility: it watches solo ⌘ taps and switches the
-keyboard layout. Bug reports and small fixes are very welcome. If you have a larger
-feature in mind, please open an issue first so we can agree on whether it belongs here
-before you spend time on the code.
+2cmd switches keyboard input sources through configurable physical-key bindings.
+Left and right Command are the defaults. Bug reports and focused fixes are welcome.
+For a larger feature, open an issue first so we can agree on its scope.
 
 ## Prerequisites
 
@@ -34,10 +33,14 @@ invalidated each time you rebuild.
 
 ## Testing
 
-The checks are a plain executable, not XCTest: neither XCTest nor swift-testing ships
-with the Command Line Tools, and the project deliberately depends on nothing else.
-`make test` builds and runs it. New behaviour in the detector should come with a case in
-`Tests/SoloTapDetectorTests.swift`.
+The checks are standalone executables, not XCTest. The project supports Command Line
+Tools without requiring a test framework or external dependencies. `make test` runs
+gesture recognition, isolated settings persistence, and Homebrew cask checks.
+
+Test observable input-source choices and event propagation in
+`Tests/KeyBindingDetectorTests.swift`. Test persistence and configuration validation through
+`Settings` in `Tests/SettingsTests.swift`, using an isolated `UserDefaults` domain.
+Verify AppKit interactions and actual input-source switching in the running app.
 
 ## Reporting bugs
 
